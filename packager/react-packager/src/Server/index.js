@@ -11,6 +11,7 @@
 const Activity = require('../Activity');
 const AssetServer = require('../AssetServer');
 const FileWatcher = require('../FileWatcher');
+const getPlatformExtension = require('../lib/getPlatformExtension');
 const Bundler = require('../Bundler');
 const Promise = require('promise');
 
@@ -96,6 +97,21 @@ const bundleOpts = declareOpts({
   }
 });
 
+const dependencyOpts = declareOpts({
+  platform: {
+    type: 'string',
+    required: true,
+  },
+  dev: {
+    type: 'boolean',
+    default: true,
+  },
+  entryFile: {
+    type: 'string',
+    required: true,
+  },
+});
+
 class Server {
   constructor(options) {
     const opts = validateOpts(options);
@@ -158,6 +174,10 @@ class Server {
 
   buildBundle(options) {
     return Promise.resolve().then(() => {
+      if (!options.platform) {
+        options.platform = getPlatformExtension(options.entryFile);
+      }
+
       const opts = bundleOpts(options);
       return this._bundler.bundle(
         opts.entryFile,
@@ -174,8 +194,26 @@ class Server {
     return this.buildBundle(options);
   }
 
-  getDependencies(main) {
-    return this._bundler.getDependencies(main);
+  getDependencies(options) {
+    return Promise.resolve().then(() => {
+      if (!options.platform) {
+        options.platform = getPlatformExtension(options.entryFile);
+      }
+
+      const opts = dependencyOpts(options);
+      return this._bundler.getDependencies(
+        opts.entryFile,
+        opts.dev,
+        opts.platform,
+      );
+    });
+  }
+
+  getOrderedDependencyPaths(options) {
+    return Promise.resolve().then(() => {
+      const opts = dependencyOpts(options);
+      return this._bundler.getOrderedDependencyPaths(opts);
+    });
   }
 
   _onFileChange(type, filepath, root) {
@@ -332,9 +370,14 @@ class Server {
           res.end(bundleSource);
           Activity.endEvent(startReqEventId);
         } else if (requestType === 'map') {
-          var sourceMap = JSON.stringify(p.getSourceMap({
+          var sourceMap = p.getSourceMap({
             minify: options.minify,
-          }));
+          });
+
+          if (typeof sourceMap !== 'string') {
+            sourceMap = JSON.stringify(sourceMap);
+          }
+
           res.setHeader('Content-Type', 'application/json');
           res.end(sourceMap);
           Activity.endEvent(startReqEventId);
@@ -354,7 +397,9 @@ class Server {
       'Content-Type': 'application/json; charset=UTF-8',
     });
 
-    if (error.type === 'TransformError' || error.type === 'NotFoundError') {
+    if (error.type === 'TransformError' ||
+        error.type === 'NotFoundError' ||
+        error.type === 'UnableToResolveError') {
       error.errors = [{
         description: error.description,
         filename: error.filename,
@@ -396,6 +441,10 @@ class Server {
     const sourceMapUrlObj = _.clone(urlObj);
     sourceMapUrlObj.pathname = pathname.replace(/\.bundle$/, '.map');
 
+    // try to get the platform from the url
+    const platform = urlObj.query.platform ||
+      getPlatformExtension(pathname);
+
     return {
       sourceMapUrl: url.format(sourceMapUrlObj),
       entryFile: entryFile,
@@ -407,7 +456,7 @@ class Server {
         'inlineSourceMap',
         false
       ),
-      platform: urlObj.query.platform,
+      platform: platform,
     };
   }
 

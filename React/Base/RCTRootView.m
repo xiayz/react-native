@@ -8,6 +8,8 @@
  */
 
 #import "RCTRootView.h"
+#import "RCTRootViewDelegate.h"
+#import "RCTRootViewInternal.h"
 
 #import <objc/runtime.h>
 
@@ -72,6 +74,7 @@ NSString *const RCTContentDidAppearNotification = @"RCTContentDidAppearNotificat
     _initialProperties = [initialProperties copy];
     _loadingViewFadeDelay = 0.25;
     _loadingViewFadeDuration = 0.25;
+    _sizeFlexibility = RCTRootViewSizeFlexibilityNone;
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(javaScriptDidLoad:)
@@ -141,19 +144,23 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
 - (void)hideLoadingView
 {
   if (_loadingView.superview == self && _contentView.contentHasAppeared) {
+    if (_loadingViewFadeDuration > 0) {
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_loadingViewFadeDelay * NSEC_PER_SEC)),
+                     dispatch_get_main_queue(), ^{
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_loadingViewFadeDelay * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-
-      [UIView transitionWithView:self
-                        duration:_loadingViewFadeDuration
-                         options:UIViewAnimationOptionTransitionCrossDissolve
-                      animations:^{
-                        _loadingView.hidden = YES;
-                      } completion:^(__unused BOOL finished) {
-                        [_loadingView removeFromSuperview];
-                      }];
-    });
+                       [UIView transitionWithView:self
+                                         duration:_loadingViewFadeDuration
+                                          options:UIViewAnimationOptionTransitionCrossDissolve
+                                       animations:^{
+                                         _loadingView.hidden = YES;
+                                       } completion:^(__unused BOOL finished) {
+                                         [_loadingView removeFromSuperview];
+                                       }];
+                     });
+    } else {
+      _loadingView.hidden = YES;
+      [_loadingView removeFromSuperview];
+    }
   }
 }
 
@@ -185,6 +192,12 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
                    args:@[moduleName, appParameters]];
 }
 
+- (void)setSizeFlexibility:(RCTRootViewSizeFlexibility)sizeFlexibility
+{
+  _sizeFlexibility = sizeFlexibility;
+  [self setNeedsLayout];
+}
+
 - (void)layoutSubviews
 {
   [super layoutSubviews];
@@ -193,6 +206,14 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
     CGRectGetMidX(self.bounds),
     CGRectGetMidY(self.bounds)
   };
+}
+
+- (void)setIntrinsicSize:(CGSize)intrinsicSize
+{
+  if (!CGSizeEqualToSize(_intrinsicSize, intrinsicSize)) {
+    _intrinsicSize = intrinsicSize;
+    [_delegate rootViewDidChangeIntrinsicSize:self];
+  }
 }
 
 - (NSNumber *)reactTag
@@ -239,7 +260,6 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithCoder:(NSCoder *)aDecoder)
   if ((self = [super initWithFrame:frame])) {
     _bridge = bridge;
     [self setUp];
-    self.frame = frame;
     self.layer.backgroundColor = NULL;
   }
   return self;

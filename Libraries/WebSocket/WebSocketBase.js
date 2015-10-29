@@ -7,14 +7,15 @@
  * of patent rights can be found in the PATENTS file in the same directory.
  *
  * @providesModule WebSocketBase
- *
  */
 'use strict';
+
+var EventTarget = require('event-target-shim');
 
 /**
  * Shared base for platform-specific WebSocket implementations.
  */
-class WebSocketBase {
+class WebSocketBase extends EventTarget {
   CONNECTING: number;
   OPEN: number;
   CLOSING: number;
@@ -33,6 +34,7 @@ class WebSocketBase {
   url: ?string;
 
   constructor(url: string, protocols: ?any) {
+    super();
     this.CONNECTING = 0;
     this.OPEN = 1;
     this.CLOSING = 2;
@@ -42,6 +44,7 @@ class WebSocketBase {
       protocols = [];
     }
 
+    this.readyState = WebSocketBase.CONNECTING;
     this.connectToSocketImpl(url);
   }
 
@@ -55,6 +58,7 @@ class WebSocketBase {
       this.cancelConnectionImpl();
     }
 
+    this.readyState = WebSocketBase.CLOSING;
     this.closeConnectionImpl();
   }
 
@@ -91,7 +95,6 @@ class WebSocketBase {
   sendArrayBufferImpl(): void {
     throw new Error('Subclass must define sendArrayBufferImpl method');
   }
-
 }
 
 module.exports = WebSocketBase;
