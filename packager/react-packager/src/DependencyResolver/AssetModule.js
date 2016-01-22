@@ -2,7 +2,7 @@
 
 const Module = require('./Module');
 const Promise = require('promise');
-const getAssetDataFromName = require('../lib/getAssetDataFromName');
+const getAssetDataFromName = require('./lib/getAssetDataFromName');
 
 class AssetModule extends Module {
   constructor(...args) {
@@ -18,14 +18,20 @@ class AssetModule extends Module {
   }
 
   getDependencies() {
-    return Promise.resolve([]);
+    return Promise.resolve(['AssetRegistry']);
   }
 
   getAsyncDependencies() {
     return Promise.resolve([]);
   }
 
-  _read() {
+  getCode(assetData) {
+    return `module.exports = require('AssetRegistry').registerAsset(${
+      JSON.stringify(assetData)
+    });`;
+  }
+
+  read() {
     return Promise.resolve({});
   }
 

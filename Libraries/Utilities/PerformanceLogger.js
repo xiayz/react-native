@@ -10,6 +10,7 @@
  */
 'use strict';
 
+var BatchedBridge = require('BatchedBridge');
 
 var performanceNow = require('performanceNow');
 
@@ -65,14 +66,33 @@ var PerformanceLogger = {
       }
       return;
     }
+    if (timespans[key].endTime) {
+      if (__DEV__) {
+        console.log(
+          'PerformanceLogger: Attempting to end a timespan that has already ended ',
+          key
+        );
+      }
+      return;
+    }
 
     timespans[key].endTime = performanceNow();
     timespans[key].totalTime =
       timespans[key].endTime - timespans[key].startTime;
   },
 
-  clearTimespans() {
+  clear() {
     timespans = {};
+    extras = {};
+  },
+
+  clearExceptTimespans(keys) {
+    timespans = Object.keys(timespans).reduce(function(previous, key) {
+      if (keys.indexOf(key) !== -1) {
+        previous[key] = timespans[key];
+      }
+      return previous;
+    }, {});
     extras = {};
   },
 
@@ -120,5 +140,10 @@ var PerformanceLogger = {
     return extras;
   }
 };
+
+BatchedBridge.registerCallableModule(
+  'PerformanceLogger',
+  PerformanceLogger
+);
 
 module.exports = PerformanceLogger;

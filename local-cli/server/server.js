@@ -31,10 +31,18 @@ function _server(argv, config, resolve, reject) {
     default: 8081,
     type: 'string',
   }, {
+    command: 'host',
+    default: '',
+    type: 'string',
+  }, {
     command: 'root',
     type: 'string',
     description: 'add another root(s) to be used by the packager in this project',
   }, {
+    command: 'projectRoots',
+    type: 'string',
+    description: 'override the root(s) to be used by the packager',
+  },{
     command: 'assetRoots',
     type: 'string',
     description: 'specify the root directories of app assets'
@@ -75,7 +83,7 @@ function _server(argv, config, resolve, reject) {
   }
 
   args.assetRoots = args.assetRoots
-    ? argToArray(args.projectRoots).map(dir =>
+    ? argToArray(args.assetRoots).map(dir =>
       path.resolve(process.cwd(), dir)
     )
     : config.getAssetRoots();
@@ -122,7 +130,7 @@ function _server(argv, config, resolve, reject) {
     }
     console.log('\nSee', chalk.underline('http://facebook.github.io/react-native/docs/troubleshooting.html'));
     console.log('for common problems and solutions.');
-    reject();
+    process.exit(1);
   });
 
   // TODO: remove once we deprecate this arg

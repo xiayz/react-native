@@ -21,7 +21,6 @@ var {
   CameraRoll,
   Image,
   LinkingIOS,
-  PixelRatio,
   ProgressViewIOS,
   StyleSheet,
   Text,
@@ -29,6 +28,9 @@ var {
   TouchableHighlight,
   View,
 } = React;
+
+var XHRExampleHeaders = require('./XHRExampleHeaders');
+var XHRExampleFetch = require('./XHRExampleFetch');
 
 class Downloader extends React.Component {
 
@@ -302,54 +304,6 @@ class FormUploader extends React.Component {
   }
 }
 
-class FetchTest extends React.Component {
-
-  constructor(props) {
-    super(props);
-    this.state = {
-     responseText: null,
-    };
-  }
-
-  submit(uri: String) {
-    fetch(uri).then((response) => {
-      return response.text();
-    }).then((body) => {
-      this.setState({responseText: body});
-    });
-  }
-
-  render() {
-
-    var response = this.state.responseText ? (
-      <View style={{marginTop: 10}}>
-        <Text style={styles.label}>Server response:</Text>
-        <TextInput
-          editable={false}
-          multiline={true}
-          defaultValue={this.state.responseText}
-          style={styles.textOutput}
-        />
-      </View>
-    ) : null;
-
-    return (
-      <View>
-        <Text style={styles.label}>Edit URL to submit:</Text>
-        <TextInput
-          returnKeyType="go"
-          defaultValue="http://www.posttestserver.com/post.php"
-          onSubmitEditing={(event)=> {
-            this.submit(event.nativeEvent.text);
-          }}
-          style={styles.textInput}
-        />
-        {response}
-      </View>
-    );
-  }
-}
-
 exports.framework = 'React';
 exports.title = 'XMLHttpRequest';
 exports.description = 'XMLHttpRequest';
@@ -364,9 +318,14 @@ exports.examples = [{
     return <FormUploader/>;
   }
 }, {
-  title: 'fetch test',
+  title: 'Fetch Test',
   render() {
-    return <FetchTest/>;
+    return <XHRExampleFetch/>;
+  }
+}, {
+  title: 'Headers',
+  render() {
+    return <XHRExampleHeaders/>;
   }
 }];
 
@@ -383,7 +342,7 @@ var styles = StyleSheet.create({
     flexDirection: 'row',
     paddingVertical: 8,
     alignItems: 'center',
-    borderBottomWidth: 1 / PixelRatio.get(),
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'grey',
   },
   photoLabel: {
@@ -424,20 +383,5 @@ var styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '500',
-  },
-  label: {
-    flex: 1,
-    color: '#aaa',
-    fontWeight: '500',
-    height: 20,
-  },
-  textOutput: {
-    flex: 1,
-    fontSize: 17,
-    borderRadius: 3,
-    borderColor: 'grey',
-    borderWidth: 1,
-    height: 200,
-    paddingLeft: 8,
   },
 });
