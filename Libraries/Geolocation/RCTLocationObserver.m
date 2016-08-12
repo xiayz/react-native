@@ -31,6 +31,7 @@ typedef struct {
   double timeout;
   double maximumAge;
   double accuracy;
+  double distanceFilter;
 } RCTLocationOptions;
 
 @implementation RCTConvert (RCTLocationOptions)
@@ -38,10 +39,15 @@ typedef struct {
 + (RCTLocationOptions)RCTLocationOptions:(id)json
 {
   NSDictionary<NSString *, id> *options = [RCTConvert NSDictionary:json];
+
+  double distanceFilter = options[@"distanceFilter"] == NULL ? RCT_DEFAULT_LOCATION_ACCURACY
+    : [RCTConvert double:options[@"distanceFilter"]] ?: kCLDistanceFilterNone;
+
   return (RCTLocationOptions){
     .timeout = [RCTConvert NSTimeInterval:options[@"timeout"]] ?: INFINITY,
     .maximumAge = [RCTConvert NSTimeInterval:options[@"maximumAge"]] ?: INFINITY,
-    .accuracy = [RCTConvert BOOL:options[@"enableHighAccuracy"]] ? kCLLocationAccuracyBest : RCT_DEFAULT_LOCATION_ACCURACY
+    .accuracy = [RCTConvert BOOL:options[@"enableHighAccuracy"]] ? kCLLocationAccuracyBest : RCT_DEFAULT_LOCATION_ACCURACY,
+    .distanceFilter = distanceFilter
   };
 }
 
@@ -107,8 +113,6 @@ static NSDictionary<NSString *, id> *RCTPositionError(RCTPositionErrorCode code,
 
 RCT_EXPORT_MODULE()
 
-@synthesize bridge = _bridge;
-
 #pragma mark - Lifecycle
 
 - (void)dealloc
@@ -122,13 +126,17 @@ RCT_EXPORT_MODULE()
   return dispatch_get_main_queue();
 }
 
+- (NSArray<NSString *> *)supportedEvents
+{
+  return @[@"geolocationDidChange", @"geolocationError"];
+}
+
 #pragma mark - Private API
 
-- (void)beginLocationUpdates
+- (void)beginLocationUpdatesWithDesiredAccuracy:(CLLocationAccuracy)desiredAccuracy distanceFilter:(CLLocationDistance)distanceFilter
 {
   if (!_locationManager) {
     _locationManager = [CLLocationManager new];
-    _locationManager.distanceFilter = RCT_DEFAULT_LOCATION_ACCURACY;
     _locationManager.delegate = self;
   }
 
@@ -141,6 +149,8 @@ RCT_EXPORT_MODULE()
     [_locationManager requestWhenInUseAuthorization];
   }
 
+  _locationManager.distanceFilter  = distanceFilter;
+  _locationManager.desiredAccuracy = desiredAccuracy;
   // Start observing location
   [_locationManager startUpdatingLocation];
 }
@@ -172,8 +182,7 @@ RCT_EXPORT_METHOD(startObserving:(RCTLocationOptions)options)
     _observerOptions.accuracy = MIN(_observerOptions.accuracy, request.options.accuracy);
   }
 
-  _locationManager.desiredAccuracy = _observerOptions.accuracy;
-  [self beginLocationUpdates];
+  [self beginLocationUpdatesWithDesiredAccuracy:_observerOptions.accuracy distanceFilter:_observerOptions.distanceFilter];
   _observingLocation = YES;
 }
 
@@ -219,8 +228,8 @@ RCT_EXPORT_METHOD(getCurrentPosition:(RCTLocationOptions)options
 
   // Check if previous recorded location exists and is good enough
   if (_lastLocationEvent &&
-      CFAbsoluteTimeGetCurrent() - [RCTConvert NSTimeInterval:_lastLocationEvent[@"timestamp"]] < options.maximumAge &&
-      [_lastLocationEvent[@"coords"][@"accuracy"] doubleValue] >= options.accuracy) {
+      [NSDate date].timeIntervalSince1970 - [RCTConvert NSTimeInterval:_lastLocationEvent[@"timestamp"]] < options.maximumAge &&
+      [_lastLocationEvent[@"coords"][@"accuracy"] doubleValue] <= options.accuracy) {
 
     // Call success block with most recent known location
     successBlock(@[_lastLocationEvent]);
@@ -243,8 +252,11 @@ RCT_EXPORT_METHOD(getCurrentPosition:(RCTLocationOptions)options
   [_pendingRequests addObject:request];
 
   // Configure location manager and begin updating location
-  _locationManager.desiredAccuracy = MIN(_locationManager.desiredAccuracy, options.accuracy);
-  [self beginLocationUpdates];
+  CLLocationAccuracy accuracy = options.accuracy;
+  if (_locationManager) {
+    accuracy = MIN(_locationManager.desiredAccuracy, accuracy);
+  }
+  [self beginLocationUpdatesWithDesiredAccuracy:accuracy distanceFilter:options.distanceFilter];
 }
 
 #pragma mark - CLLocationManagerDelegate
@@ -264,13 +276,12 @@ RCT_EXPORT_METHOD(getCurrentPosition:(RCTLocationOptions)options
       @"heading": @(location.course),
       @"speed": @(location.speed),
     },
-    @"timestamp": @(CFAbsoluteTimeGetCurrent() * 1000.0) // in ms
+    @"timestamp": @([location.timestamp timeIntervalSince1970] * 1000) // in ms
   };
 
   // Send event
   if (_observingLocation) {
-    [_bridge.eventDispatcher sendDeviceEventWithName:@"geolocationDidChange"
-                                                body:_lastLocationEvent];
+    [self sendEventWithName:@"geolocationDidChange" body:_lastLocationEvent];
   }
 
   // Fire all queued callbacks
@@ -280,7 +291,7 @@ RCT_EXPORT_METHOD(getCurrentPosition:(RCTLocationOptions)options
   }
   [_pendingRequests removeAllObjects];
 
-  // Stop updating if not not observing
+  // Stop updating if not observing
   if (!_observingLocation) {
     [_locationManager stopUpdatingLocation];
   }
@@ -311,8 +322,7 @@ RCT_EXPORT_METHOD(getCurrentPosition:(RCTLocationOptions)options
 
   // Send event
   if (_observingLocation) {
-    [_bridge.eventDispatcher sendDeviceEventWithName:@"geolocationError"
-                                                body:jsError];
+    [self sendEventWithName:@"geolocationError" body:jsError];
   }
 
   // Fire all queued error callbacks

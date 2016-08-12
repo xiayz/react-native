@@ -8,25 +8,27 @@
  */
 'use strict';
 
+jest.disableAutomock();
+
 jest
   .setMock('worker-farm', () => () => undefined)
-  .dontMock('absolute-path')
-  .dontMock('underscore')
-  .dontMock('../../lib/ModuleTransport')
-  .dontMock('../../DependencyResolver/AssetModule')
-  .dontMock('../../DependencyResolver/Module')
-  .dontMock('../../DependencyResolver/lib/getAssetDataFromName')
   .setMock('uglify-js')
-  .dontMock('../');
+  .mock('image-size')
+  .mock('fs')
+  .mock('assert')
+  .mock('progress')
+  .mock('../../node-haste')
+  .mock('../../JSTransformer')
+  .mock('../../lib/declareOpts')
+  .mock('../../Resolver')
+  .mock('../Bundle')
+  .mock('../PrepackBundle')
+  .mock('../HMRBundle')
+  .mock('../../Activity')
+  .mock('../../lib/declareOpts');
 
-jest.mock('fs');
-
-var AssetModule = require('../../DependencyResolver/AssetModule');
 var Bundler = require('../');
-var JSTransformer = require('../../JSTransformer');
-var Module = require('../../DependencyResolver/Module');
 var Resolver = require('../../Resolver');
-
 var sizeOf = require('image-size');
 var fs = require('fs');
 
@@ -39,45 +41,41 @@ describe('Bundler', function() {
     isAsset,
     isAsset_DEPRECATED,
     isJSON,
+    isPolyfill,
     resolution,
   }) {
-    if (isAsset) {
-      const module = new AssetModule({
-        file: path,
-        cache: {get: () => Promise.resolve(path)}
-      });
-      module.getName = () => Promise.resolve(id);
-      return module;
-    }
     return {
       path,
       resolution,
-      getDependencies() { return Promise.resolve(dependencies); },
-      getName() { return Promise.resolve(id); },
-      isJSON() { return isJSON; },
-      isAsset() { return isAsset; },
-      isAsset_DEPRECATED() { return isAsset_DEPRECATED; },
+      getDependencies: () => Promise.resolve(dependencies),
+      getName: () => Promise.resolve(id),
+      isJSON: () => isJSON,
+      isAsset: () => isAsset,
+      isAsset_DEPRECATED: () => isAsset_DEPRECATED,
+      isPolyfill: () => isPolyfill,
+      read: () => ({
+        code: 'arbitrary',
+        source: 'arbitrary',
+      }),
     };
   }
 
   var getDependencies;
   var getModuleSystemDependencies;
-  var wrapModule;
   var bundler;
   var assetServer;
   var modules;
-  const width = 50;
-  const height = 100;
+  var projectRoots;
 
   beforeEach(function() {
-    getDependencies = jest.genMockFn();
-    getModuleSystemDependencies = jest.genMockFn();
-    wrapModule = jest.genMockFn();
+    getDependencies = jest.fn();
+    getModuleSystemDependencies = jest.fn();
+    projectRoots = ['/root'];
+
     Resolver.mockImpl(function() {
       return {
         getDependencies: getDependencies,
         getModuleSystemDependencies: getModuleSystemDependencies,
-        wrapModule: wrapModule,
       };
     });
 
@@ -92,11 +90,11 @@ describe('Bundler', function() {
     });
 
     assetServer = {
-      getAssetData: jest.genMockFn(),
+      getAssetData: jest.fn(),
     };
 
     bundler = new Bundler({
-      projectRoots: ['/root'],
+      projectRoots,
       assetServer: assetServer,
     });
 
@@ -125,39 +123,21 @@ describe('Bundler', function() {
       }),
     ];
 
-    const mainModule = new Module({file: '/root/foo'});
-    getDependencies.mockImpl(function() {
-      return Promise.resolve({
+    getDependencies.mockImpl((main, options, transformOptions) =>
+      Promise.resolve({
         mainModuleId: 'foo',
         dependencies: modules,
-        getMainModule: () => mainModule,
-      });
-    });
+        transformOptions,
+        getModuleId: () => 123,
+      })
+    );
 
     getModuleSystemDependencies.mockImpl(function() {
       return [];
     });
 
-    JSTransformer.prototype.loadFileAndTransform
-      .mockImpl(function(path) {
-        return Promise.resolve({
-          code: 'transformed ' + path,
-          map: 'sourcemap ' + path,
-          sourceCode: 'source ' + path,
-          sourcePath: path
-        });
-      });
-
-    wrapModule.mockImpl(function(response, module, code) {
-      return module.getName().then(name => ({
-        name,
-        id: name,
-        code: 'lol ' + code + ' lol'
-      }));
-    });
-
     sizeOf.mockImpl(function(path, cb) {
-      cb(null, { width, height });
+      cb(null, { width: 50, height: 100 });
     });
   });
 
@@ -194,7 +174,7 @@ describe('Bundler', function() {
           {runMainModule: true, runBeforeMainModule: []}
         ]);
 
-        expect(bundle.addAsset.mock.calls).toContain([{
+        expect(bundle.addAsset.mock.calls[0]).toEqual([{
           __packager_asset: true,
           path: '/root/img/img.png',
           uri: 'img',
@@ -203,12 +183,12 @@ describe('Bundler', function() {
           deprecated: true,
         }]);
 
-        expect(bundle.addAsset.mock.calls).toContain([{
+        expect(bundle.addAsset.mock.calls[1]).toEqual([{
           __packager_asset: true,
           fileSystemLocation: '/root/img',
           httpServerLocation: '/assets/img',
-          width,
-          height,
+          width: 25,
+          height: 50,
           scales: [1, 2, 3],
           files: [
             '/root/img/img.png',
@@ -226,11 +206,23 @@ describe('Bundler', function() {
   });
 
   pit('gets the list of dependencies from the resolver', function() {
-    return bundler.getDependencies('/root/foo.js', true)
-      .then(
-        () => expect(getDependencies)
-                .toBeCalledWith('/root/foo.js', { dev: true })
-      );
+    const entryFile = '/root/foo.js';
+    return bundler.getDependencies({entryFile, recursive: true}).then(() =>
+      // jest calledWith does not support jasmine.any
+      expect(getDependencies.mock.calls[0].slice(0, -2)).toEqual([
+        '/root/foo.js',
+        { dev: true, recursive: true },
+        { minify: false,
+          dev: true,
+          transform: {
+            dev: true,
+            hot: false,
+            generateSourceMaps: false,
+            projectRoots,
+          }
+        },
+      ])
+    );
   });
 
   describe('getOrderedDependencyPaths', () => {

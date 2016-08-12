@@ -11,31 +11,39 @@ package com.facebook.react.views.webview;
 
 import javax.annotation.Nullable;
 
+import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
 import java.util.Map;
 
 import android.graphics.Bitmap;
 import android.os.Build;
-import android.os.SystemClock;
 import android.text.TextUtils;
+import android.view.ViewGroup.LayoutParams;
+import android.webkit.GeolocationPermissions;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
 
-import com.facebook.catalyst.views.webview.events.TopLoadingErrorEvent;
-import com.facebook.catalyst.views.webview.events.TopLoadingFinishEvent;
-import com.facebook.catalyst.views.webview.events.TopLoadingStartEvent;
+import com.facebook.react.views.webview.events.TopLoadingErrorEvent;
+import com.facebook.react.views.webview.events.TopLoadingFinishEvent;
+import com.facebook.react.views.webview.events.TopLoadingStartEvent;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReadableArray;
+import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableMapKeySetIterator;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.common.MapBuilder;
 import com.facebook.react.common.build.ReactBuildConfig;
-import com.facebook.react.uimanager.annotations.ReactProp;
 import com.facebook.react.uimanager.SimpleViewManager;
 import com.facebook.react.uimanager.ThemedReactContext;
 import com.facebook.react.uimanager.UIManagerModule;
+import com.facebook.react.uimanager.annotations.ReactProp;
 import com.facebook.react.uimanager.events.Event;
 import com.facebook.react.uimanager.events.EventDispatcher;
+import android.content.Intent;
+import android.net.Uri;
 
 /**
  * Manages instances of {@link WebView}
@@ -65,9 +73,12 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
   private static final String HTML_ENCODING = "UTF-8";
   private static final String HTML_MIME_TYPE = "text/html; charset=utf-8";
 
+  private static final String HTTP_METHOD_POST = "POST";
+
   public static final int COMMAND_GO_BACK = 1;
   public static final int COMMAND_GO_FORWARD = 2;
   public static final int COMMAND_RELOAD = 3;
+  public static final int COMMAND_STOP_LOADING = 4;
 
   // Use `webView.loadUrl("about:blank")` to reliably reset the view
   // state and release page resources (including any running JavaScript).
@@ -99,8 +110,19 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
           webView,
           new TopLoadingStartEvent(
               webView.getId(),
-              SystemClock.uptimeMillis(),
               createWebViewEvent(webView, url)));
+    }
+
+    @Override
+    public boolean shouldOverrideUrlLoading(WebView view, String url) {
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+          return false;
+        } else {
+          Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url)); 
+          intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+          view.getContext().startActivity(intent);   
+          return true;   
+        }              
     }
 
     @Override
@@ -122,7 +144,7 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
 
       dispatchEvent(
           webView,
-          new TopLoadingErrorEvent(webView.getId(), SystemClock.uptimeMillis(), eventData));
+          new TopLoadingErrorEvent(webView.getId(), eventData));
     }
 
     @Override
@@ -132,9 +154,8 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
       dispatchEvent(
           webView,
           new TopLoadingStartEvent(
-            webView.getId(),
-            SystemClock.uptimeMillis(),
-            createWebViewEvent(webView, url)));
+              webView.getId(),
+              createWebViewEvent(webView, url)));
     }
 
     private void emitFinishEvent(WebView webView, String url) {
@@ -142,7 +163,6 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
           webView,
           new TopLoadingFinishEvent(
               webView.getId(),
-              SystemClock.uptimeMillis(),
               createWebViewEvent(webView, url)));
     }
 
@@ -205,10 +225,9 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
     }
 
     public void callInjectedJavaScript() {
-      if (
-          getSettings().getJavaScriptEnabled() &&
-              injectedJS != null &&
-              !TextUtils.isEmpty(injectedJS)) {
+      if (getSettings().getJavaScriptEnabled() &&
+          injectedJS != null &&
+          !TextUtils.isEmpty(injectedJS)) {
         loadUrl("javascript:(function() {\n" + injectedJS + ";\n})();");
       }
     }
@@ -238,8 +257,21 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
   @Override
   protected WebView createViewInstance(ThemedReactContext reactContext) {
     ReactWebView webView = new ReactWebView(reactContext);
+    webView.setWebChromeClient(new WebChromeClient() {
+      @Override
+      public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+        callback.invoke(origin, true, false);
+      }
+    });
     reactContext.addLifecycleEventListener(webView);
     mWebViewConfig.configWebView(webView);
+    webView.getSettings().setBuiltInZoomControls(true);
+    webView.getSettings().setDisplayZoomControls(false);
+
+    // Fixes broken full-screen modals/galleries due to body height being 0.
+    webView.setLayoutParams(
+            new LayoutParams(LayoutParams.MATCH_PARENT,
+                LayoutParams.MATCH_PARENT));
 
     if (ReactBuildConfig.DEBUG && Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
       WebView.setWebContentsDebuggingEnabled(true);
@@ -253,10 +285,16 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
     view.getSettings().setJavaScriptEnabled(enabled);
   }
 
+  @ReactProp(name = "scalesPageToFit")
+  public void setScalesPageToFit(WebView view, boolean enabled) {
+    view.getSettings().setUseWideViewPort(!enabled);
+  }
+
   @ReactProp(name = "domStorageEnabled")
   public void setDomStorageEnabled(WebView view, boolean enabled) {
     view.getSettings().setDomStorageEnabled(enabled);
   }
+
 
   @ReactProp(name = "userAgent")
   public void setUserAgent(WebView view, @Nullable String userAgent) {
@@ -266,36 +304,68 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
     }
   }
 
+  @ReactProp(name = "mediaPlaybackRequiresUserAction")
+  public void setMediaPlaybackRequiresUserAction(WebView view, boolean requires) {
+    view.getSettings().setMediaPlaybackRequiresUserGesture(requires);
+  }
+
   @ReactProp(name = "injectedJavaScript")
   public void setInjectedJavaScript(WebView view, @Nullable String injectedJavaScript) {
     ((ReactWebView) view).setInjectedJavaScript(injectedJavaScript);
   }
 
-  @ReactProp(name = "html")
-  public void setHtml(WebView view, @Nullable String html) {
-    if (html != null) {
-      view.loadData(html, HTML_MIME_TYPE, HTML_ENCODING);
-    } else {
-      view.loadUrl(BLANK_URL);
+  @ReactProp(name = "source")
+  public void setSource(WebView view, @Nullable ReadableMap source) {
+    if (source != null) {
+      if (source.hasKey("html")) {
+        String html = source.getString("html");
+        if (source.hasKey("baseUrl")) {
+          view.loadDataWithBaseURL(
+              source.getString("baseUrl"), html, HTML_MIME_TYPE, HTML_ENCODING, null);
+        } else {
+          view.loadData(html, HTML_MIME_TYPE, HTML_ENCODING);
+        }
+        return;
+      }
+      if (source.hasKey("uri")) {
+        String url = source.getString("uri");
+        String previousUrl = view.getUrl();
+        if (previousUrl != null && previousUrl.equals(url)) {
+          return;
+        }
+        if (source.hasKey("method")) {
+          String method = source.getString("method");
+          if (method.equals(HTTP_METHOD_POST)) {
+            byte[] postData = null;
+            if (source.hasKey("body")) {
+              String body = source.getString("body");
+              try {
+                postData = body.getBytes("UTF-8");
+              } catch (UnsupportedEncodingException e) {
+                postData = body.getBytes();
+              }
+            }
+            if (postData == null) {
+              postData = new byte[0];
+            }
+            view.postUrl(url, postData);
+            return;
+          }
+        }
+        HashMap<String, String> headerMap = new HashMap<>();
+        if (source.hasKey("headers")) {
+          ReadableMap headers = source.getMap("headers");
+          ReadableMapKeySetIterator iter = headers.keySetIterator();
+          while (iter.hasNextKey()) {
+            String key = iter.nextKey();
+            headerMap.put(key, headers.getString(key));
+          }
+        }
+        view.loadUrl(url, headerMap);
+        return;
+      }
     }
-  }
-
-  @ReactProp(name = "url")
-  public void setUrl(WebView view, @Nullable String url) {
-    // TODO(8495359): url and html are coupled as they both call loadUrl, therefore in case when
-    // property url is removed in favor of property html being added in single transaction we may
-    // end up in a state when blank url is loaded as it depends on the order of update operations!
-
-    String currentUrl = view.getUrl();
-    if (currentUrl != null && currentUrl.equals(url)) {
-      // We are already loading it so no need to stomp over it and start again
-      return;
-    }
-    if (url != null) {
-      view.loadUrl(url);
-    } else {
-      view.loadUrl(BLANK_URL);
-    }
+    view.loadUrl(BLANK_URL);
   }
 
   @Override
@@ -309,7 +379,8 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
     return MapBuilder.of(
         "goBack", COMMAND_GO_BACK,
         "goForward", COMMAND_GO_FORWARD,
-        "reload", COMMAND_RELOAD);
+        "reload", COMMAND_RELOAD,
+        "stopLoading", COMMAND_STOP_LOADING);
   }
 
   @Override
@@ -323,6 +394,9 @@ public class ReactWebViewManager extends SimpleViewManager<WebView> {
         break;
       case COMMAND_RELOAD:
         root.reload();
+        break;
+      case COMMAND_STOP_LOADING:
+        root.stopLoading();
         break;
     }
   }

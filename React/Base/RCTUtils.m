@@ -19,12 +19,17 @@
 #import <zlib.h>
 #import <dlfcn.h>
 
+#import "RCTAssert.h"
 #import "RCTLog.h"
 
 NSString *const RCTErrorUnspecified = @"EUNSPECIFIED";
 
-NSString *__nullable RCTJSONStringify(id __nullable jsonObject, NSError **error)
+static NSString *__nullable _RCTJSONStringifyNoRetry(id __nullable jsonObject, NSError **error)
 {
+  if (!jsonObject) {
+    return nil;
+  }
+
   static SEL JSONKitSelector = NULL;
   static NSSet<Class> *collectionTypes;
   static dispatch_once_t onceToken;
@@ -38,17 +43,48 @@ NSString *__nullable RCTJSONStringify(id __nullable jsonObject, NSError **error)
     }
   });
 
-  // Use JSONKit if available and object is not a fragment
-  if (JSONKitSelector && [collectionTypes containsObject:[jsonObject classForCoder]]) {
-    return ((NSString *(*)(id, SEL, int, NSError **))objc_msgSend)(jsonObject, JSONKitSelector, 0, error);
-  }
+  @try {
 
-  // Use Foundation JSON method
-  NSData *jsonData = jsonObject ? [NSJSONSerialization
-                                   dataWithJSONObject:jsonObject
-                                   options:(NSJSONWritingOptions)NSJSONReadingAllowFragments
-                                   error:error] : nil;
-  return jsonData ? [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding] : nil;
+    // Use JSONKit if available and object is not a fragment
+    if (JSONKitSelector && [collectionTypes containsObject:[jsonObject classForCoder]]) {
+      return ((NSString *(*)(id, SEL, int, NSError **))objc_msgSend)(jsonObject, JSONKitSelector, 0, error);
+    }
+
+    // Use Foundation JSON method
+    NSData *jsonData = [NSJSONSerialization
+                        dataWithJSONObject:jsonObject options:(NSJSONWritingOptions)NSJSONReadingAllowFragments
+                        error:error];
+
+    return jsonData ? [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding] : nil;
+  }
+  @catch (NSException *exception) {
+
+    // Convert exception to error
+    if (error) {
+      *error = [NSError errorWithDomain:RCTErrorDomain code:0 userInfo:@{
+        NSLocalizedDescriptionKey: exception.description ?: @""
+      }];
+    }
+    return nil;
+  }
+}
+
+NSString *__nullable RCTJSONStringify(id __nullable jsonObject, NSError **error)
+{
+  if (error) {
+    return _RCTJSONStringifyNoRetry(jsonObject, error);
+  } else {
+    NSError *localError;
+    NSString *json = _RCTJSONStringifyNoRetry(jsonObject, &localError);
+    if (localError) {
+      RCTLogError(@"RCTJSONStringify() encountered the following error: %@",
+                  localError.localizedDescription);
+      // Sanitize the data, then retry. This is slow, but it prevents uncaught
+      // data issues from crashing in production
+      return _RCTJSONStringifyNoRetry(RCTJSONClean(jsonObject), NULL);
+    }
+    return json;
+  }
 }
 
 static id __nullable _RCTJSONParse(NSString *__nullable jsonString, BOOL mutable, NSError **error)
@@ -134,6 +170,14 @@ id RCTJSONClean(id object)
   });
 
   if ([validLeafTypes containsObject:[object classForCoder]]) {
+    if ([object isKindOfClass:[NSNumber class]]) {
+      return @(RCTZeroIfNaN([object doubleValue]));
+    }
+    if ([object isKindOfClass:[NSString class]]) {
+      if ([object UTF8String] == NULL) {
+        return (id)kCFNull;
+      }
+    }
     return object;
   }
 
@@ -185,9 +229,31 @@ NSString *RCTMD5Hash(NSString *string)
   ];
 }
 
+BOOL RCTIsMainQueue()
+{
+  static void *mainQueueKey = &mainQueueKey;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    dispatch_queue_set_specific(dispatch_get_main_queue(),
+                                mainQueueKey, mainQueueKey, NULL);
+  });
+  return dispatch_get_specific(mainQueueKey) == mainQueueKey;
+}
+
+void RCTExecuteOnMainQueue(dispatch_block_t block)
+{
+  if (RCTIsMainQueue()) {
+    block();
+  } else {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      block();
+    });
+  }
+}
+
 void RCTExecuteOnMainThread(dispatch_block_t block, BOOL sync)
 {
-  if ([NSThread isMainThread]) {
+  if (RCTIsMainQueue()) {
     block();
   } else if (sync) {
     dispatch_sync(dispatch_get_main_queue(), ^{
@@ -215,17 +281,15 @@ CGFloat RCTScreenScale()
 
 CGSize RCTScreenSize()
 {
+  // FIXME: this caches the bounds at app start, whatever those were, and then
+  // doesn't update when the device is rotated. We need to find another thread-
+  // safe way to get the screen size.
+
   static CGSize size;
   static dispatch_once_t onceToken;
   dispatch_once(&onceToken, ^{
     RCTExecuteOnMainThread(^{
-      if ([[[UIDevice currentDevice] systemVersion] compare:@"8.0" options:NSNumericSearch] == NSOrderedDescending) {
-        CGSize pixelSize = [UIScreen mainScreen].nativeBounds.size;
-        CGFloat scale = RCTScreenScale();
-        size = (CGSize){pixelSize.width / scale, pixelSize.height / scale};
-      } else {
-        size = [UIScreen mainScreen].bounds.size;
-      }
+      size = [UIScreen mainScreen].bounds.size;
     }, YES);
   });
 
@@ -335,7 +399,8 @@ NSDictionary<NSString *, id> *RCTMakeAndLogError(NSString *message,
 
 NSDictionary<NSString *, id> *RCTJSErrorFromNSError(NSError *error)
 {
-  return RCTJSErrorFromCodeMessageAndNSError(RCTErrorUnspecified,
+  NSString *codeWithDomain = [NSString stringWithFormat:@"E%@%zd", error.domain.uppercaseString, error.code];
+  return RCTJSErrorFromCodeMessageAndNSError(codeWithDomain,
                                              error.localizedDescription,
                                              error);
 }
@@ -397,6 +462,34 @@ UIWindow *__nullable RCTKeyWindow(void)
   return RCTSharedApplication().keyWindow;
 }
 
+UIViewController *__nullable RCTPresentedViewController(void)
+{
+  if (RCTRunningInAppExtension()) {
+    return nil;
+  }
+
+  UIViewController *controller = RCTKeyWindow().rootViewController;
+
+  while (controller.presentedViewController) {
+    controller = controller.presentedViewController;
+  }
+
+  return controller;
+}
+
+BOOL RCTForceTouchAvailable(void)
+{
+  static BOOL forceSupported;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    forceSupported = [UITraitCollection class] &&
+    [UITraitCollection instancesRespondToSelector:@selector(forceTouchCapability)];
+  });
+
+  return forceSupported &&
+    (RCTKeyWindow() ?: [UIView new]).traitCollection.forceTouchCapability == UIForceTouchCapabilityAvailable;
+}
+
 UIAlertView *__nullable RCTAlertView(NSString *title,
                                      NSString *__nullable message,
                                      id __nullable delegate,
@@ -438,7 +531,7 @@ id __nullable RCTNilIfNull(id __nullable value)
   return value == (id)kCFNull ? nil : value;
 }
 
-RCT_EXTERN double RCTZeroIfNaN(double value)
+double RCTZeroIfNaN(double value)
 {
   return isnan(value) || isinf(value) ? 0 : value;
 }
@@ -457,7 +550,7 @@ BOOL RCTIsGzippedData(NSData *__nullable data)
   return (data.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b);
 }
 
-NSData *RCTGzipData(NSData *__nullable input, float level)
+NSData *__nullable RCTGzipData(NSData *__nullable input, float level)
 {
   if (input.length == 0 || RCTIsGzippedData(input)) {
     return input;
@@ -519,24 +612,60 @@ NSString *__nullable  RCTBundlePathForURL(NSURL *__nullable URL)
   return path;
 }
 
-BOOL RCTIsXCAssetURL(NSURL *__nullable imageURL)
+BOOL RCTIsLocalAssetURL(NSURL *__nullable imageURL)
 {
   NSString *name = RCTBundlePathForURL(imageURL);
-  if (name.pathComponents.count != 1) {
-    // URL is invalid, or is a file path, not an XCAsset identifier
+  if (!name) {
     return NO;
   }
+
   NSString *extension = [name pathExtension];
-  if (extension.length && ![extension isEqualToString:@"png"]) {
-    // Not a png
-    return NO;
+  return [extension isEqualToString:@"png"] || [extension isEqualToString:@"jpg"];
+}
+
+RCT_EXTERN NSString *__nullable RCTTempFilePath(NSString *extension, NSError **error)
+{
+  static NSError *setupError = nil;
+  static NSString *directory;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    directory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ReactNative"];
+    // If the temporary directory already exists, we'll delete it to ensure
+    // that temp files from the previous run have all been deleted. This is not
+    // a security measure, it simply prevents the temp directory from using too
+    // much space, as the circumstances under which iOS clears it automatically
+    // are not well-defined.
+    NSFileManager *fileManager = [NSFileManager new];
+    if ([fileManager fileExistsAtPath:directory]) {
+      [fileManager removeItemAtPath:directory error:NULL];
+    }
+    if (![fileManager fileExistsAtPath:directory]) {
+      NSError *localError = nil;
+      if (![fileManager createDirectoryAtPath:directory
+                  withIntermediateDirectories:YES
+                                   attributes:nil
+                                        error:&localError]) {
+        // This is bad
+        RCTLogError(@"Failed to create temporary directory: %@", localError);
+        setupError = localError;
+        directory = nil;
+      }
+    }
+  });
+
+  if (!directory || setupError) {
+    if (error) {
+      *error = setupError;
+    }
+    return nil;
   }
-  extension = extension.length ? nil : @"png";
-  if ([[NSBundle mainBundle] pathForResource:name ofType:extension]) {
-    // File actually exists in bundle, so is not an XCAsset
-    return NO;
+
+  // Append a unique filename
+  NSString *filename = [NSUUID new].UUIDString;
+  if (extension) {
+    filename = [filename stringByAppendingPathExtension:extension];
   }
-  return YES;
+  return [directory stringByAppendingPathComponent:filename];
 }
 
 static void RCTGetRGBAColorComponents(CGColorRef color, CGFloat rgba[4])

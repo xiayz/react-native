@@ -94,7 +94,7 @@ public class ReactShadowNode extends CSSNode {
     }
   }
 
-  protected void markUpdated() {
+  public void markUpdated() {
     if (mNodeUpdated) {
       return;
     }
@@ -105,8 +105,12 @@ public class ReactShadowNode extends CSSNode {
     }
   }
 
+  public boolean hasUnseenUpdates() {
+    return mNodeUpdated;
+  }
+
   @Override
-  protected void dirty() {
+  public void dirty() {
     if (!isVirtual()) {
       super.dirty();
     }
@@ -168,7 +172,7 @@ public class ReactShadowNode extends CSSNode {
   public void onBeforeLayout() {
   }
 
-  public final void updateProperties(CatalystStylesDiffMap props) {
+  public final void updateProperties(ReactStylesDiffMap props) {
     ViewManagerPropertyUpdater.updateProps(this, props);
     onAfterUpdateTransaction();
   }

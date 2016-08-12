@@ -50,6 +50,7 @@ import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeArray;
 import com.facebook.react.bridge.WritableNativeMap;
+import com.facebook.react.bridge.annotations.ReactModule;
 import com.facebook.react.common.ReactConstants;
 
 // TODO #6015104: rename to something less iOSish
@@ -57,9 +58,9 @@ import com.facebook.react.common.ReactConstants;
  * {@link NativeModule} that allows JS to interact with the photos on the device (i.e.
  * {@link MediaStore.Images}).
  */
+@ReactModule(name = "RKCameraRollManager")
 public class CameraRollManager extends ReactContextBaseJavaModule {
 
-  private static final String TAG = "Catalyst/CameraRollManager";
   private static final String ERROR_UNABLE_TO_LOAD = "E_UNABLE_TO_LOAD";
   private static final String ERROR_UNABLE_TO_LOAD_PERMISSION = "E_UNABLE_TO_LOAD_PERMISSION";
   private static final String ERROR_UNABLE_TO_SAVE = "E_UNABLE_TO_SAVE";
@@ -100,11 +101,6 @@ public class CameraRollManager extends ReactContextBaseJavaModule {
   }
 
   @Override
-  public String getName() {
-    return "RKCameraRollManager";
-  }
-
-  @Override
   public Map<String, Object> getConstants() {
     return Collections.emptyMap();
   }
@@ -118,22 +114,26 @@ public class CameraRollManager extends ReactContextBaseJavaModule {
    * @param promise to be resolved or rejected
    */
   @ReactMethod
-  public void saveImageWithTag(String uri, Promise promise) {
-    new SaveImageTag(getReactApplicationContext(), Uri.parse(uri), promise)
+  public void saveToCameraRoll(String uri, String type, Promise promise) {
+    MediaType parsedType = type.equals("video") ? MediaType.VIDEO : MediaType.PHOTO;
+    new SaveToCameraRoll(getReactApplicationContext(), Uri.parse(uri), parsedType, promise)
         .executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
   }
 
-  private static class SaveImageTag extends GuardedAsyncTask<Void, Void> {
+  private enum MediaType { PHOTO, VIDEO };
+  private static class SaveToCameraRoll extends GuardedAsyncTask<Void, Void> {
 
     private final Context mContext;
     private final Uri mUri;
     private final Promise mPromise;
+    private final MediaType mType;
 
-    public SaveImageTag(ReactContext context, Uri uri, Promise promise) {
+    public SaveToCameraRoll(ReactContext context, Uri uri, MediaType type, Promise promise) {
       super(context);
       mContext = context;
       mUri = uri;
       mPromise = promise;
+      mType = type;
     }
 
     @Override
@@ -141,14 +141,15 @@ public class CameraRollManager extends ReactContextBaseJavaModule {
       File source = new File(mUri.getPath());
       FileChannel input = null, output = null;
       try {
-        File pictures =
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-        pictures.mkdirs();
-        if (!pictures.isDirectory()) {
-          mPromise.reject(ERROR_UNABLE_TO_LOAD, "External storage pictures directory not available", null);
+        File exportDir = (mType == MediaType.PHOTO)
+          ? Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+          : Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES);
+        exportDir.mkdirs();
+        if (!exportDir.isDirectory()) {
+          mPromise.reject(ERROR_UNABLE_TO_LOAD, "External media storage directory not available");
           return;
         }
-        File dest = new File(pictures, source.getName());
+        File dest = new File(exportDir, source.getName());
         int n = 0;
         String fullSourceName = source.getName();
         String sourceName, sourceExt;
@@ -160,7 +161,7 @@ public class CameraRollManager extends ReactContextBaseJavaModule {
           sourceExt = "";
         }
         while (!dest.createNewFile()) {
-          dest = new File(pictures, sourceName + "_" + (n++) + sourceExt);
+          dest = new File(exportDir, sourceName + "_" + (n++) + sourceExt);
         }
         input = new FileInputStream(source).getChannel();
         output = new FileOutputStream(dest).getChannel();
@@ -178,7 +179,7 @@ public class CameraRollManager extends ReactContextBaseJavaModule {
                 if (uri != null) {
                   mPromise.resolve(uri.toString());
                 } else {
-                  mPromise.reject(ERROR_UNABLE_TO_SAVE, "Could not add image to gallery", null);
+                  mPromise.reject(ERROR_UNABLE_TO_SAVE, "Could not add image to gallery");
                 }
               }
             });
@@ -302,7 +303,7 @@ public class CameraRollManager extends ReactContextBaseJavaModule {
             Images.Media.DATE_TAKEN + " DESC, " + Images.Media.DATE_MODIFIED + " DESC LIMIT " +
                 (mFirst + 1)); // set LIMIT to first + 1 so that we know how to populate page_info
         if (photos == null) {
-          mPromise.reject(ERROR_UNABLE_TO_LOAD, "Could not get photos", null);
+          mPromise.reject(ERROR_UNABLE_TO_LOAD, "Could not get photos");
         } else {
           try {
             putEdges(resolver, photos, response, mFirst);
@@ -412,7 +413,7 @@ public class CameraRollManager extends ReactContextBaseJavaModule {
         width = options.outWidth;
         height = options.outHeight;
       } catch (IOException e) {
-        FLog.e(TAG, "Could not get width/height for " + photoUri.toString(), e);
+        FLog.e(ReactConstants.TAG, "Could not get width/height for " + photoUri.toString(), e);
         return false;
       }
     }
@@ -436,5 +437,4 @@ public class CameraRollManager extends ReactContextBaseJavaModule {
       node.putMap("location", location);
     }
   }
-
 }

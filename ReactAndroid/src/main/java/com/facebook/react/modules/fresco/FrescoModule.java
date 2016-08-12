@@ -19,23 +19,25 @@ import com.facebook.cache.disk.DiskCacheConfig;
 import com.facebook.common.internal.AndroidPredicates;
 import com.facebook.common.soloader.SoLoaderShim;
 import com.facebook.drawee.backends.pipeline.Fresco;
-import com.facebook.imagepipeline.backends.okhttp.OkHttpImagePipelineConfigFactory;
+import com.facebook.imagepipeline.backends.okhttp3.OkHttpImagePipelineConfigFactory;
 import com.facebook.imagepipeline.core.ImagePipelineConfig;
 import com.facebook.imagepipeline.core.ImagePipelineFactory;
 import com.facebook.imagepipeline.listener.RequestListener;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
+import com.facebook.react.bridge.annotations.ReactModule;
 import com.facebook.react.modules.common.ModuleDataCleaner;
 import com.facebook.react.modules.network.OkHttpClientProvider;
 import com.facebook.soloader.SoLoader;
 
-import com.squareup.okhttp.OkHttpClient;
+import okhttp3.OkHttpClient;
 
 /**
  * Module to initialize the Fresco library.
  *
  * <p>Does not expose any methods to JavaScript code. For initialization and cleanup only.
  */
+@ReactModule(name = "FrescoModule", needsEagerInit = true)
 public class FrescoModule extends ReactContextBaseJavaModule implements
     ModuleDataCleaner.Cleanable {
 
@@ -74,18 +76,13 @@ public class FrescoModule extends ReactContextBaseJavaModule implements
   }
 
   @Override
-  public String getName() {
-    return "FrescoModule";
-  }
-
-  @Override
   public void clearSensitiveData() {
     // Clear image cache.
     ImagePipelineFactory imagePipelineFactory = Fresco.getImagePipelineFactory();
     imagePipelineFactory.getBitmapMemoryCache().removeAll(AndroidPredicates.<CacheKey>True());
     imagePipelineFactory.getEncodedMemoryCache().removeAll(AndroidPredicates.<CacheKey>True());
-    imagePipelineFactory.getMainDiskStorageCache().clearAll();
-    imagePipelineFactory.getSmallImageDiskStorageCache().clearAll();
+    imagePipelineFactory.getMainFileCache().clearAll();
+    imagePipelineFactory.getSmallImageFileCache().clearAll();
   }
 
   private static ImagePipelineConfig getDefaultConfig(
