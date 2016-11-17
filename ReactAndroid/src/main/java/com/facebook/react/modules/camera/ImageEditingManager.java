@@ -46,8 +46,8 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.JSApplicationIllegalArgumentException;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.infer.annotation.Assertions;
-import com.facebook.react.bridge.annotations.ReactModule;
 import com.facebook.react.common.ReactConstants;
+import com.facebook.react.module.annotations.ReactModule;
 
 /**
  * Native module that provides image cropping functionality.
@@ -94,6 +94,11 @@ public class ImageEditingManager extends ReactContextBaseJavaModule {
   public ImageEditingManager(ReactApplicationContext reactContext) {
     super(reactContext);
     new CleanTask(getReactApplicationContext()).executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+  }
+
+  @Override
+  public String getName() {
+    return "RKImageEditingManager";
   }
 
   @Override

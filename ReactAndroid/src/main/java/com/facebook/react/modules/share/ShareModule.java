@@ -19,7 +19,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.bridge.annotations.ReactModule;
+import com.facebook.react.module.annotations.ReactModule;
 
 /**
  * Intent module. Launch other activities or open URLs.
@@ -33,6 +33,11 @@ public class ShareModule extends ReactContextBaseJavaModule {
 
   public ShareModule(ReactApplicationContext reactContext) {
     super(reactContext);
+  }
+
+  @Override
+  public String getName() {
+    return "ShareModule";
   }
 
   /**
@@ -78,5 +83,4 @@ public class ShareModule extends ReactContextBaseJavaModule {
       promise.reject(ERROR_UNABLE_TO_OPEN_DIALOG, "Failed to open share dialog");
     }
   }
-
 }

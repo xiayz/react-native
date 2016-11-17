@@ -12,7 +12,7 @@ package com.facebook.react.modules.systeminfo;
 import android.os.Build;
 
 import com.facebook.react.bridge.BaseJavaModule;
-import com.facebook.react.bridge.annotations.ReactModule;
+import com.facebook.react.module.annotations.ReactModule;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,8 +26,13 @@ import javax.annotation.Nullable;
 public class AndroidInfoModule extends BaseJavaModule {
 
   @Override
+  public String getName() {
+    return "AndroidConstants";
+  }
+
+  @Override
   public @Nullable Map<String, Object> getConstants() {
-    HashMap<String, Object> constants = new HashMap<String, Object>();
+    HashMap<String, Object> constants = new HashMap<>();
     constants.put("Version", Build.VERSION.SDK_INT);
     constants.put("ServerHost", AndroidInfoHelpers.getServerHost());
     return constants;

@@ -27,7 +27,7 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.annotations.ReactModule;
+import com.facebook.react.module.annotations.ReactModule;
 
 @ReactModule(name = "ImageStoreManager")
 public class ImageStoreManager extends ReactContextBaseJavaModule {
@@ -36,6 +36,11 @@ public class ImageStoreManager extends ReactContextBaseJavaModule {
 
   public ImageStoreManager(ReactApplicationContext reactContext) {
     super(reactContext);
+  }
+
+  @Override
+  public String getName() {
+    return "ImageStoreManager";
   }
 
   /**

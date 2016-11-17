@@ -11,7 +11,6 @@ package com.facebook.react.modules.timepicker;
 
 import javax.annotation.Nullable;
 
-
 import android.app.Activity;
 import android.app.DialogFragment;
 import android.app.FragmentManager;
@@ -29,8 +28,8 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
-import com.facebook.react.bridge.annotations.ReactModule;
 import com.facebook.react.common.annotations.VisibleForTesting;
+import com.facebook.react.module.annotations.ReactModule;
 
 /**
  * {@link NativeModule} that allows JS to show a native time picker dialog and get called back when
@@ -52,6 +51,11 @@ public class TimePickerDialogModule extends ReactContextBaseJavaModule {
 
   public TimePickerDialogModule(ReactApplicationContext reactContext) {
     super(reactContext);
+  }
+
+  @Override
+  public String getName() {
+    return "TimePickerAndroid";
   }
 
   private class TimePickerDialogListener implements OnTimeSetListener, OnDismissListener {

@@ -20,7 +20,7 @@ import com.facebook.react.bridge.JavaScriptModule;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.annotations.ReactModule;
+import com.facebook.react.module.annotations.ReactModule;
 
 @ReactModule(name = "JSCHeapCapture")
 public class JSCHeapCapture extends ReactContextBaseJavaModule {
@@ -132,6 +132,11 @@ public class JSCHeapCapture extends ReactContextBaseJavaModule {
       }
       mCaptureInProgress = null;
     }
+  }
+
+  @Override
+  public String getName() {
+    return "JSCHeapCapture";
   }
 
   @Override

@@ -20,7 +20,7 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
-import com.facebook.react.bridge.annotations.ReactModule;
+import com.facebook.react.module.annotations.ReactModule;
 
 /**
  * Native module that can asynchronously request the owners hierarchy of a react tag.
@@ -93,5 +93,10 @@ public class DebugComponentOwnershipModule extends ReactContextBaseJavaModule {
     mNextRequestId++;
     mRequestIdToCallback.put(requestId, callback);
     Assertions.assertNotNull(mRCTDebugComponentOwnership).getOwnerHierarchy(requestId, tag);
+  }
+
+  @Override
+  public String getName() {
+    return "DebugComponentOwnershipModule";
   }
 }

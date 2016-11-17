@@ -30,8 +30,8 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
-import com.facebook.react.bridge.annotations.ReactModule;
 import com.facebook.react.common.annotations.VisibleForTesting;
+import com.facebook.react.module.annotations.ReactModule;
 
 /**
  * {@link NativeModule} that allows JS to show a native date picker dialog and get called back when
@@ -54,6 +54,11 @@ public class DatePickerDialogModule extends ReactContextBaseJavaModule {
 
   public DatePickerDialogModule(ReactApplicationContext reactContext) {
     super(reactContext);
+  }
+
+  @Override
+  public String getName() {
+    return "DatePickerAndroid";
   }
 
   private class DatePickerDialogListener implements OnDateSetListener, OnDismissListener {

@@ -24,7 +24,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
-import com.facebook.react.bridge.annotations.ReactModule;
+import com.facebook.react.module.annotations.ReactModule;
 
 import static com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter;
 
@@ -73,6 +73,11 @@ public class NetInfoModule extends ReactContextBaseJavaModule
   @Override
   public void initialize() {
     getReactApplicationContext().addLifecycleEventListener(this);
+  }
+
+  @Override
+  public String getName() {
+    return "NetInfo";
   }
 
   @ReactMethod

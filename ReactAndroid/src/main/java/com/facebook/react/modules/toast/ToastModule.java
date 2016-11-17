@@ -16,9 +16,9 @@ import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.annotations.ReactModule;
 import com.facebook.react.common.MapBuilder;
 import com.facebook.react.bridge.UiThreadUtil;
+import com.facebook.react.module.annotations.ReactModule;
 
 import java.util.Map;
 
@@ -37,6 +37,11 @@ public class ToastModule extends ReactContextBaseJavaModule {
 
   public ToastModule(ReactApplicationContext reactContext) {
     super(reactContext);
+  }
+
+  @Override
+  public String getName() {
+    return "ToastAndroid";
   }
 
   @Override

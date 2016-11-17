@@ -16,25 +16,24 @@ import java.util.Set;
 
 import com.facebook.react.bridge.BaseJavaModule;
 import com.facebook.react.bridge.CatalystInstance;
-import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.InvalidIteratorException;
 import com.facebook.react.bridge.JavaScriptModule;
 import com.facebook.react.bridge.NoSuchKeyException;
+import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
-import com.facebook.react.bridge.ReadableType;
-import com.facebook.react.bridge.ReadableNativeMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
-import com.facebook.react.bridge.UnexpectedNativeTypeException;
+import com.facebook.react.bridge.ReadableNativeMap;
+import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.UiThreadUtil;
+import com.facebook.react.bridge.UnexpectedNativeTypeException;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeMap;
-import com.facebook.react.bridge.annotations.ReactModule;
 import com.facebook.react.modules.systeminfo.AndroidInfoModule;
 import com.facebook.react.testing.FakeWebSocketModule;
 import com.facebook.react.testing.ReactIntegrationTestCase;
 import com.facebook.react.testing.ReactTestHelper;
-import com.facebook.react.uimanager.UIImplementation;
+import com.facebook.react.uimanager.UIImplementationProvider;
 import com.facebook.react.uimanager.UIManagerModule;
 import com.facebook.react.uimanager.ViewManager;
 import com.facebook.react.views.view.ReactViewManager;
@@ -80,7 +79,7 @@ public class CatalystNativeJSToJavaParametersTestCase extends ReactIntegrationTe
     final UIManagerModule mUIManager = new UIManagerModule(
         getContext(),
         viewManagers,
-        new UIImplementation(getContext(), viewManagers));
+        new UIImplementationProvider());
     UiThreadUtil.runOnUiThread(
         new Runnable() {
           @Override
@@ -669,12 +668,16 @@ public class CatalystNativeJSToJavaParametersTestCase extends ReactIntegrationTe
     }
   }
 
-  @ReactModule(name = "Recording")
   private class RecordingTestModule extends BaseJavaModule {
 
     private final List<Object[]> mBasicTypesCalls = new ArrayList<Object[]>();
     private final List<ReadableArray> mArrayCalls = new ArrayList<ReadableArray>();
     private final List<ReadableMap> mMapCalls = new ArrayList<ReadableMap>();
+
+    @Override
+    public String getName() {
+      return "Recording";
+    }
 
     @ReactMethod
     public void receiveBasicTypes(String s, double d, boolean b, String nullableString) {

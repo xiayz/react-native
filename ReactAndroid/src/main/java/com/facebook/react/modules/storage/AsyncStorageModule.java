@@ -24,9 +24,9 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.bridge.annotations.ReactModule;
 import com.facebook.react.common.ReactConstants;
 import com.facebook.react.common.SetBuilder;
+import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.common.ModuleDataCleaner;
 
 import static com.facebook.react.modules.storage.ReactDatabaseSupplier.KEY_COLUMN;
@@ -47,6 +47,11 @@ public final class AsyncStorageModule
   public AsyncStorageModule(ReactApplicationContext reactContext) {
     super(reactContext);
     mReactDatabaseSupplier = ReactDatabaseSupplier.getInstance(reactContext);
+  }
+
+  @Override
+  public String getName() {
+    return "AsyncSQLiteDBStorage";
   }
 
   @Override
